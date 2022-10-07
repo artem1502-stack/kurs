@@ -3,7 +3,7 @@ from numba import njit
 from scipy.interpolate import interp1d as interpolate
 import matplotlib.pyplot as plt
 
-n = 5000
+n = 30
 m = 200
 NNN = int(m / 15)
 
@@ -12,14 +12,20 @@ nn2 = 2.
 ss1 = 0.25
 ss2 = 0.2
 mc = 0.1
+kk = 1
 
 @njit
 def B(s):
 	return (k1(s) / nn1) + (k2(s) / nn2) 
+@njit
+def W(s, dp):
+	return (-kk * B(s) * dp)
+
 
 @njit
 def k1(s):
 	return s ** 2
+
 @njit
 def k2(s):
 	return (1 - s) ** 2
@@ -45,8 +51,6 @@ def s_iter(s, p, t, h, tau):
 		aa1 = B(shp) * phi(shp)
 		aa2 = B(shm) * phi(shm)
 		ab2 = (p[t + 1][i] - p[t + 1][i - 1]) / h
-		
-		#print(f"aa1 = {aa1},\taa2 = {aa2}")
 		s[t + 1][i] = np.abs(s[t][i] + (tau / (mc * h)) * (aa1 * ab1 - aa2 * ab2))
 		if (s[t + 1][i] > 1 - ss2):
 			s[t + 1][i] = 1 - ss2
@@ -87,8 +91,7 @@ def get_abch(s, t, L):
 	a[m - 1] = B((s[t][m - 2] + s[t][m - 1]) / 2)
 	b[m - 1] = -2 * B(s[t][m - 1])
 
-	return a, b, c, (L / (n - 1)), (L / (m - 1))
-
+	return a, b, c, (L / (n - 1))
 def print_mass(mas, s):
 	print(s)
 	for i in reversed(mas):
@@ -107,25 +110,56 @@ def print_onemas(mas, s):
 	print("")
 
 def main():
-	p1 = 100
+	p1 = 10
 	p2 = 1
 	s = np.zeros((n, m))
 	p = np.zeros((n, m))
 	L = 1
-	
+
 	p[:, 0] = p1
 	p[:, m - 1] = p2
-	
+
 	s[0] = 0.2
 	s[:, 0] = 0.8
-	#print(p)
-	#print(s)
-	for t in range(n - 1):
-		a, b, c, h, tau = get_abch(s, t, L)
+
+	@njit
+	def find_tau(s, dp, h):
+		warray = np.zeros(len(dp))
+		for i, item in enumerate(dp):
+			warray[i] = W(s[t][i], item)
+		to_tau = max(np.abs(warray))
+		return 0.5 * h / to_tau
+
+	end = 1
+	t = 0
+	while (end > 1.e-5):
+		a, b, c, h = get_abch(s, t, L)
 		p[t + 1] = progonka_count(a, b, c, p1, p2)
+		dp = (p[t + 1][1:] - p[t + 1][:-1]) / 2
+		tau = find_tau(s, dp, h)
+
 		s = s_iter(s, p, t, h, tau)
-	print_mass(p[1:], "p mass:")
-	print_onemas(s[-1], "s at the last moment")
+		end = np.linalg.norm(s[t + 1] - s[t])
+		print(f"\rtau = {tau:.2e}, end = {end}, n = {t}", end = "\r")
+		t += 1
+		if (t >= n - 2):
+			print("\n Not enough space")
+			break
+
+	print("\n")
+	print_mass(p[1:t], "p mass:")
+	print_mass(s, "s at the last moment")
+
+	x = np.linspace(0, 1, m);
+	fig, (ax1, ax2, ax3), (bx1, bx2, bx3)= plt.subplots(3, 3)
+	ax1.plot(x, s[5], 'r')
+	ax2.plot(x, s[10], 'g')
+	ax3.plot(x, s[15], 'b');
+	ax1.set_ylim([0, 1])
+	ax2.set_ylim([0, 1])
+	ax3.set_ylim([0, 1])
+	plt.show()
+
 
 def test():
 	x = np.arange(0, m)

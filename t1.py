@@ -17,10 +17,10 @@ kk = 1
 @njit
 def B(s):
 	return (k1(s) / nn1) + (k2(s) / nn2) 
-
 @njit
 def W(s, dp):
 	return (-kk * B(s) * dp)
+
 
 @njit
 def k1(s):
@@ -51,7 +51,6 @@ def s_iter(s, p, t, h, tau):
 		aa1 = B(shp) * phi(shp)
 		aa2 = B(shm) * phi(shm)
 		ab2 = (p[t + 1][i] - p[t + 1][i - 1]) / h
-		
 		s[t + 1][i] = np.abs(s[t][i] + (tau / (mc * h)) * (aa1 * ab1 - aa2 * ab2))
 		if (s[t + 1][i] > 1 - ss2):
 			s[t + 1][i] = 1 - ss2
@@ -111,7 +110,6 @@ def print_onemas(mas, s):
 	print("")
 
 def main():
-
 	p1 = 10
 	p2 = 1
 	s = np.zeros((n, m))
@@ -161,6 +159,7 @@ def main():
 	ax2.set_ylim([0, 1])
 	ax3.set_ylim([0, 1])
 	plt.show()
+
 
 def test():
 	x = np.arange(0, m)

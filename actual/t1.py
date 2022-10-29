@@ -3,7 +3,7 @@ import sys
 
 def s_iter(s, dp, t, h, tau):
 
-	ww = bb(s[t], dp=dp)
+	ww = b_simple(s[t], dp=dp)
 	s[t + 1][1:] = s[t][1:] - ww[1:] * (tau / h) * (s[t][1:] - s[t][:-1])
 	return s
 
@@ -67,56 +67,39 @@ def main():
 	dp = np.average((p[1][1:] - p[1][:-1]) / h)
 
 	s_pos = np.linspace(0, L, m)
-	w_water = bb(s_pos, dp=dp)
+	w_water = b_simple(s_pos, dp=dp)
+	w_water_real = W(s2, dp) * phi(s2)
 	w_max = max(w_water)
 	tau =  0.5 * h  / w_max
-	
+	print(f"tau = {tau}\nn = {int((1 / w_water_real) / tau)}")
 	s = s_iter(s, dp, 0, h, tau)
 
-	n_m = int((1 / w_max) / tau) * 5
-	print(n_m)
-	print(s)
-	counter = 0
 	for t in range(1, n - 1):
 		s = s_iter(s, dp, t, h, tau)
 		a, b, c = get_abch(s[t])
 		p[t + 1] = progonka_count(a, b, c, p1, p2)
 		dp = np.average((p[t + 1][1:] - p[t + 1][:-1]) / h)
-		if t > n_m:
-			break
-	print("Count complete")
-	#print(s)
+
 	print("\n")
-	return s[:min(n, n_m)]
+	return s
 
 
 def graph(s):
-	fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1)
-
-	fig.set_label("Graph")
-	ax2.set_ylabel('Водонасыщенность')
-	ax3.set_xlabel('Координаты')
+	
+	plt.ylabel('Водонасыщенность')
+	plt.xlabel('Координаты')
 
 	x = np.linspace(0, 1, m)
 
-	n_loc = len(s)
+	n_loc = n
 
-	ax1.plot(x, s[0], "r")
-	print(s[n_loc // 3])
-	ax2.plot(x, s[n_loc // 3], "g")
-	ax3.plot(x, s[2 * n_loc // 3], "b")
-	ax4.plot(x, s[n_loc - 1], "black")
-	print(max(s, key=sum))
-	fig.set_label("Graph")
-
-	ax1.set_ylim([0, 1])
-	ax2.set_ylim([0, 1])
-	ax3.set_ylim([0, 1])
-	ax4.set_ylim([0, 1])
-	ax1.set_xlim([0, 1])
-	ax2.set_xlim([0, 1])
-	ax3.set_xlim([0, 1])
-	ax4.set_xlim([0, 1])
+	plt.plot(x, s[0], "r")
+	plt.plot(x, s[n_loc // 3], "g")
+	plt.plot(x, s[2 * n_loc // 3], "b")
+	plt.plot(x, s[n_loc - 1], "black")
+	
+	plt.ylim([0, 1])
+	plt.xlim([0, 1])
 	
 	plt.show()
 

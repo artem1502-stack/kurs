@@ -1,2 +1,6 @@
+NAME = t2.py
+
 all:
-	@python3 check.py
+	@printf "Run $(NAME)\n"
+	@python3 $(NAME)
+

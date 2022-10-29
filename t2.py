@@ -8,7 +8,7 @@ m = 200
 NNN = int(m / 15)
 
 nn1 = 1.
-nn2 = 2.
+nn2 = 10.
 ss1 = 0.25
 ss2 = 0.2
 mc = 0.1
@@ -18,72 +18,81 @@ plt.rcParams['font.size'] = '8'
 
 @njit
 def B(s):
-	return (k1(s) / nn1) + (k2(s) / nn2) 
+	return (k1(s) / nn1) + (k2(s) / nn2)
 @njit
 def W(s, dp):
 	return (-kk * B(s) * dp)
-
-
 @njit
 def k1(s):
-	return s ** 2
-
+	if s < ss1:
+		return 0
+	return ((s - ss1) / (1 - ss1)) ** 2
 @njit
 def k2(s):
-	return (1 - s) ** 2
-
+	if s > 1 - ss2:
+		return 0
+	return (1 - (1 - s) / ss2) ** 2
 @njit
 def phi(s):
 	return (k1(s) / nn1) / (k1(s) / nn1 + k2(s) / nn2)
 
-
 def s_iter(s, p, t, h, tau):
 
-	for i in range(1, m):
-		if (i == m - 1):
-			p_fun = interpolate(np.arange(len(p[t + 1])), p[t + 1], fill_value="extrapolate")
-			p_lst = p_fun(m)
-			ab1 = (p_lst - p[t + 1][i]) / h
-			shp = s[t][i]
-		else:
-			shp = (s[t][i] + s[t][i + 1]) / 2
-			ab1 = (p[t + 1][i + 1] - p[t + 1][i]) / h
-		
+	for i in range(1, m - 1):
+		shp = (s[t][i] + s[t][i + 1]) / 2
 		shm = (s[t][i - 1] + s[t][i]) / 2
 		aa1 = B(shp) * phi(shp)
+		ab1 = (p[t + 1][i + 1] - p[t + 1][i]) / h
 		aa2 = B(shm) * phi(shm)
 		ab2 = (p[t + 1][i] - p[t + 1][i - 1]) / h
 		s[t + 1][i] = np.abs(s[t][i] + (tau / (mc * h)) * (aa1 * ab1 - aa2 * ab2))
-		if (s[t + 1][i] > 1 - ss2):
-			s[t + 1][i] = 1 - ss2
+
+	p_fun = interpolate(np.arange(m), p[t + 1], fill_value="extrapolate")
+	p_lst = p_fun(m)
+	ab1 = (p_lst - p[t + 1][i]) / h
+	shp = s[t][i]
+	shm = (s[t][i - 1] + s[t][i]) / 2
+	aa1 = B(shp) * phi(shp)
+	aa2 = B(shm) * phi(shm)
+	ab2 = (p[t + 1][i] - p[t + 1][i - 1]) / h
+	s[t + 1][i] = np.abs(s[t][i] + (tau / (mc * h)) * (aa1 * ab1 - aa2 * ab2))
+
+
 	return s
 
-def progonka_count(a, b, c, p1, p2):
+@njit
+def progonka_count(a, b, c, p1, p2, dd):
 	y = np.zeros(m)
 	alpha = np.zeros(m)
 	beta = np.zeros(m)
 	x = np.zeros(m)
 
 	y[0] = b[0]
-	alpha[0] = -c[0]/y[0]
+	if (np.abs(y[0]) <= 0):
+		y[0] = -0.0001
+	alpha[0] = -c[0] / y[0]
 	beta[0] = 0
 	for i in range(1, m - 1):
 		y[i] = b[i] + a[i] * alpha[i - 1]
+		if (np.abs(y[i]) <= 0):
+			y[i] = -0.0001
 		alpha[i] = -c[i] / y[i]
 		beta[i] = -a[i] * beta[i - 1] / y[i]
 	y[m - 1] = b[m - 1] + a[m - 1] * alpha[m - 2]
-	beta[m - 1] = -a[m - 1] * beta[m - 2] / y[m - 1]
+	if (np.abs(y[m - 1]) <= 0):
+		y[m - 1] = -0.0001
+	dd = p2 * dd
+	beta[m - 1] = (dd-a[m - 1] * beta[m - 2]) / y[m - 1]
 
 	x[m - 1] = p1
 	for i in range(m - 2, -1, -1):
 		x[i] = alpha[i] * x[i + 1] + beta[i]
 	return x[::-1]
-
 def get_abch(s, t, L):
 	a, b, c = np.zeros(m), np.zeros(m), np.zeros(m)
 
 	c[0] = B((s[t][0] + s[t][1]) / 2)
-	b[0] = -2 * B(s[t][0])
+	b[0] = - B(s[t][0]) - B((s[t][0] + s[t][1]) / 2)
 	for i in range(1, m - 1):
 		shm = (s[t][i - 1] + s[t][i]) / 2
 		shp = (s[t][i] + s[t][i + 1]) / 2
@@ -91,9 +100,10 @@ def get_abch(s, t, L):
 		b[i] = -B(shm) - B(shp)
 		c[i] = B(shp)
 	a[m - 1] = B((s[t][m - 2] + s[t][m - 1]) / 2)
-	b[m - 1] = -2 * B(s[t][m - 1])
+	b[m - 1] = 0#- B(s[t][m - 1]) - B((s[t][m - 2] + s[t][m - 1]) / 2)
+	dd = (B(s[t][m - 1]) + B((s[t][m - 2] + s[t][m - 1]) / 2))
+	return a, b, c, (L / (n - 1)), dd
 
-	return a, b, c, (L / (n - 1))
 def print_mass(mas, s):
 	print(s)
 	for i in reversed(mas):
@@ -102,7 +112,6 @@ def print_mass(mas, s):
 				continue
 			print(f"{j:.5f}", end="  ")
 		print("")
-
 def print_onemas(mas, s):
 	print(s)
 	for k, j in enumerate(mas):
@@ -110,6 +119,9 @@ def print_onemas(mas, s):
 			continue
 		print(f"{j:.5f}", end="  ")
 	print("")
+
+def pressure_theore(x):
+	return x * (-9) + 10
 
 def main():
 	p1 = 10
@@ -122,24 +134,25 @@ def main():
 	p[:, 0] = p1
 	p[:, m - 1] = p2
 
-	s[0] = 0.2
-	s[:, 0] = 0.8
-
-	@njit
-	def find_tau(s, dp, h):
+	s[0] = 0.1
+	s[:, 0] = 0.3
+	print(s)
+	
+	end = 1
+	t = 0
+	a, b, c, h, dd = get_abch(s, t, L)
+	p[0] = progonka_count(a, b, c, p1, p2, dd)
+	while (end > 1.e-5):
+		a, b, c, h, dd = get_abch(s, t, L)
+		p[t + 1] = progonka_count(a, b, c, p1, p2, dd)
+		dp = (p[t + 1][1:] - p[t + 1][:-1]) / h
+		###########
 		warray = np.zeros(len(dp))
 		for i, item in enumerate(dp):
 			warray[i] = W(s[t][i], item)
 		to_tau = max(np.abs(warray))
-		return 0.5 * h / to_tau
-
-	end = 1
-	t = 0
-	while (end > 1.e-5):
-		a, b, c, h = get_abch(s, t, L)
-		p[t + 1] = progonka_count(a, b, c, p1, p2)
-		dp = (p[t + 1][1:] - p[t + 1][:-1]) / 2
-		tau = find_tau(s, dp, h)
+		tau =  2 * h  / to_tau
+		###########
 		bt += tau
 		s = s_iter(s, p, t, h, tau)
 		end = np.linalg.norm(s[t + 1] - s[t])
@@ -155,51 +168,38 @@ def main():
 
 	print(f"n = {t}, time = {bt}")
 	x = np.linspace(0, 1, m);
-	p = p * 9/10 + 1
+	#p = p * 9/10 + 1
 	fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
 	#fig2, (bx1, bx2, bx3) = plt.subplots(3, 1, sharex=True)
+	
 	fig.set_label("Graph")
 	ax2.set_ylabel('Водонасыщенность')
 	ax3.set_xlabel('Координаты')
 	
-	ax1.set_title("на 5-м шаге по времени")
-	ax2.set_title("на 10-м шаге по времени")
-	ax3.set_title("на 15-м шаге по времени")
-
-	def to_graph(xstop_):
-		c = 0.2
-		b =  (59 * 5 * xstop_ + 59) / (2500 * xstop_)
-		a = (105 * xstop_ - 59) / (500 * xstop_)
-		def f_ro(x_):
-			if x_ < xstop_:
-				return a + b / (x_ + c) -0.01
-			else:
-				return 0.2
-		return f_ro
-
-	vec_graph = to_graph(0.798)
-	rus_res = np.array(list(map(vec_graph, x)))
-	ax1.plot(x, rus_res, 'r')
-	vec_graph = to_graph(10.51)
-	rus_res = np.array(list(map(vec_graph, x)))
-
-	ax2.plot(x, rus_res, 'g')
-	vec_graph = to_graph(50.22)
-	rus_res = np.array(list(map(vec_graph, x)))
-	ax3.plot(x, rus_res, 'b');
-	"""
-	fig.set_label("Graph")
-	bx2.set_ylabel('Давление')
-	bx3.set_xlabel('Координаты')
+	ax1.set_title("на 0-м шаге по времени")
+	ax2.set_title("на середине по времени")
+	ax3.set_title("на конце по времени")
+	print(t)
+	print(s[0:3])
+	ax1.plot(x, s[0], 'r')
 	
-	bx1.set_title("на 5-м шаге по времени")
-	bx2.set_title("на 10-м шаге по времени")
-	bx3.set_title("на 15-м шаге по времени")
+	ax2.plot(x, s[1], 'g')
+	ax3.plot(x, s[2], 'b');
+	fig.set_label("Graph")
+	#bx2.set_ylabel('Давление')
+	#bx3.set_xlabel('Координаты')
+	
+	#bx1.set_title("на 0-м шаге по времени")
+	#bx2.set_title("на середине по времени")
+	#bx3.set_title("на конце по времени")
 
-	bx1.plot(x, p[5], 'r')
-	bx3.plot(x, p[10], 'b')
-	bx2.plot(x, p[15], 'g');
-	"""
+	#bx1.plot(x, p[0], 'r')
+	#bx2.plot(x, p[t // 2], 'g')
+	#bx3.plot(x, p[t - 1], 'b')
+	
+	#ax1.set_yscale('log')
+	#ax2.set_yscale('log')
+
 	ax1.set_ylim([0, 1])
 	ax2.set_ylim([0, 1])
 	ax3.set_ylim([0, 1])
@@ -215,6 +215,13 @@ def test():
 	xnew = np.arange(0, m + 1, 1)
 	ynew = f(xnew)
 	plt.plot(x, y, 'o', xnew, ynew, '-')
+	plt.show()
+
+def test_2():
+	x = np.linspace(0, 1, 100)
+	y = np.vectorize(phi)(x)
+	z = np.vectorize(B)(x)
+	plt.plot(x, y, "r", x, z, "g")
 	plt.show()
 
 if __name__ == "__main__":
